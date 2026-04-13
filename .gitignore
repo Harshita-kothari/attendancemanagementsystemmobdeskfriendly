@@ -30,6 +30,10 @@ client/.env
 server/data/*.json
 face-api/data/*.json
 face-api/encodings/*
+backend/data/*.json
+backend/face_db.json
+backend/face_data/*
+!backend/face_data/.gitkeep
 
 .DS_Store
 Thumbs.db
