@@ -1,0 +1,24 @@
+[
+  {
+    "record_id": "2d665c88ebcf4e53a86519be713b91b8",
+    "student_id": "f0b33aa14e7449dea92abf1c7ff6b18b",
+    "name": "Harshita",
+    "email": "silkykothari84@gmail.com",
+    "department": "General",
+    "date": "2026-04-09",
+    "time": "17:30:25",
+    "timestamp": "2026-04-09T12:00:25.300088",
+    "confidence": 0.73
+  },
+  {
+    "record_id": "8630db94f1404d4f9c77abdd46269ee4",
+    "student_id": "2dd24e12dda548ea9500e17e6f8140e5",
+    "name": "Harsh",
+    "email": "harsh@gmail.com",
+    "department": "General",
+    "date": "2026-04-09",
+    "time": "17:36:06",
+    "timestamp": "2026-04-09T12:06:06.574648",
+    "confidence": 0.73
+  }
+]

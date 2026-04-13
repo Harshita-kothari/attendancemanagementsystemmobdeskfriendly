@@ -1,0 +1,12 @@
+{
+  "students": [
+    {"id": "s1", "name": "Arjun Patel", "roll_no": "CS21001", "department": "B.Tech CSE", "avatar": "AP", "face_embedding": null},
+    {"id": "s2", "name": "Sneha Gupta", "roll_no": "CS21002", "department": "B.Tech CSE", "avatar": "SG", "face_embedding": null},
+    {"id": "s3", "name": "Rohit Kumar", "roll_no": "CS21003", "department": "B.Tech CSE", "avatar": "RK", "face_embedding": null},
+    {"id": "s4", "name": "Ananya Singh", "roll_no": "CS21004", "department": "B.Tech CSE", "avatar": "AS", "face_embedding": null},
+    {"id": "s5", "name": "Vikram Yadav", "roll_no": "CS21005", "department": "B.Tech CSE", "avatar": "VY", "face_embedding": null},
+    {"id": "s6", "name": "Pooja Mishra", "roll_no": "CS21006", "department": "B.Tech CSE", "avatar": "PM", "face_embedding": null},
+    {"id": "s7", "name": "Amit Joshi", "roll_no": "CS21007", "department": "B.Tech CSE", "avatar": "AJ", "face_embedding": null},
+    {"id": "s8", "name": "Divya Chauhan", "roll_no": "CS21008", "department": "B.Tech CSE", "avatar": "DC", "face_embedding": null}
+  ]
+}
