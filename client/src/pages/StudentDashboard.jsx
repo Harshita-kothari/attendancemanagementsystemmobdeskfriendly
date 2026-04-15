@@ -1384,8 +1384,8 @@ export function StudentDashboard() {
               </button>
             </div>
           </div>
-          <div className="mt-4 overflow-hidden rounded-[1.5rem] border border-slate-200 dark:border-slate-800">
-            <table className="w-full text-sm">
+          <div className="mt-4 overflow-x-auto rounded-[1.5rem] border border-slate-200 dark:border-slate-800">
+            <table className="min-w-[820px] w-full text-sm">
               <thead className="bg-slate-50 dark:bg-slate-900">
                 <tr>
                   <th className="px-4 py-3 text-left">Date</th>
