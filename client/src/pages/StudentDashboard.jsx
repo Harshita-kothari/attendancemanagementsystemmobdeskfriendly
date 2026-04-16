@@ -42,6 +42,7 @@ import autoTable from 'jspdf-autotable'
 import api from '../lib/api'
 import { AIChatAssistant } from '../components/AIChatAssistant'
 import { DashboardLayout } from '../components/DashboardLayout'
+import { FaceCapture } from '../components/FaceCapture'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 
@@ -85,6 +86,8 @@ export function StudentDashboard() {
   const [attendanceOtpChallengeId, setAttendanceOtpChallengeId] = useState('')
   const [attendanceOtpCode, setAttendanceOtpCode] = useState('')
   const [attendanceOtpStatus, setAttendanceOtpStatus] = useState('')
+  const [faceRegistrationFrames, setFaceRegistrationFrames] = useState([])
+  const [registeringFace, setRegisteringFace] = useState(false)
   const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7))
   const [calendarMonth, setCalendarMonth] = useState(startOfMonth(new Date()))
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(new Date())
@@ -235,6 +238,38 @@ export function StudentDashboard() {
     } catch (error) {
       setStudent(user || null)
       setScanError(error.response?.data?.message || 'Unable to load student profile.')
+    }
+  }
+
+  async function registerStudentFace() {
+    if (faceRegistrationFrames.length < 5) {
+      const message = 'Capture at least 5 face samples to complete student face registration.'
+      setScanError(message)
+      if (alertsEnabled) toast.error(message)
+      return
+    }
+
+    try {
+      setRegisteringFace(true)
+      setScanError('')
+      const { data } = await api.post('/api/students/me/register-face', {
+        faceImages: faceRegistrationFrames,
+      })
+      setStudent(data.student || student)
+      setFaceRegistrationFrames([])
+      setAttendanceOtpStatus(data.message || 'Face profile registered successfully.')
+      await loadProfile()
+      if (alertsEnabled) toast.success(data.message || 'Face profile registered successfully.')
+    } catch (error) {
+      const message = error.response?.data?.ownerEmail
+        ? `${error.response?.data?.message || 'Unable to register face profile.'} Existing owner: ${error.response.data.ownerEmail}`
+        : error.response?.data?.detail
+          ? `${error.response?.data?.message || 'Unable to register face profile.'} ${error.response.data.detail}`
+          : error.response?.data?.message || 'Unable to register face profile.'
+      setScanError(message)
+      if (alertsEnabled) toast.error(message)
+    } finally {
+      setRegisteringFace(false)
     }
   }
 
@@ -1116,21 +1151,45 @@ export function StudentDashboard() {
       ) : null}
 
       {currentPage === 'profile' ? (
-        <div className="card-panel p-6">
-          <p className="text-lg font-semibold">Profile</p>
-          <div className="mt-4 grid gap-4 md:grid-cols-2 text-sm">
-            <p><span className="text-slate-500 dark:text-slate-400">Name:</span> {student?.name}</p>
-            <p><span className="text-slate-500 dark:text-slate-400">Email:</span> {student?.email}</p>
-            <p><span className="text-slate-500 dark:text-slate-400">Department:</span> {student?.department}</p>
-            <p><span className="text-slate-500 dark:text-slate-400">Student code:</span> {student?.studentCode}</p>
-            <p><span className="text-slate-500 dark:text-slate-400">Registered face:</span> {student?.faceRegistered ? 'Yes' : 'No'}</p>
-            <p><span className="text-slate-500 dark:text-slate-400">Attendance percentage:</span> {student?.attendancePercentage || 0}%</p>
-          </div>
-        </div>
-      ) : null}
+          <div className="space-y-6">
+            <div className="card-panel p-6">
+              <p className="text-lg font-semibold">Profile</p>
+              <div className="mt-4 grid gap-4 text-sm md:grid-cols-2">
+                <p><span className="text-slate-500 dark:text-slate-400">Name:</span> {student?.name}</p>
+                <p><span className="text-slate-500 dark:text-slate-400">Email:</span> {student?.email}</p>
+                <p><span className="text-slate-500 dark:text-slate-400">Department:</span> {student?.department}</p>
+                <p><span className="text-slate-500 dark:text-slate-400">Student code:</span> {student?.studentCode}</p>
+                <p><span className="text-slate-500 dark:text-slate-400">Registered face:</span> {student?.faceRegistered ? 'Yes' : 'No'}</p>
+                <p><span className="text-slate-500 dark:text-slate-400">Attendance percentage:</span> {student?.attendancePercentage || 0}%</p>
+              </div>
+            </div>
 
-      {currentPage === 'scan' ? (
-        <div className="card-panel p-6">
+            {!student?.faceRegistered ? (
+              <div className="card-panel p-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-lg font-semibold">Complete face registration</p>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                      Your account is ready, but attendance scan needs your face dataset. Capture at least 5 clear samples and save them here.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-amber-500/10 px-3 py-1 text-xs text-amber-500">Face pending</span>
+                </div>
+                <div className="mt-4">
+                  <FaceCapture onFramesChange={setFaceRegistrationFrames} maxFrames={6} label="Register student face profile" />
+                </div>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button onClick={registerStudentFace} className="action-primary" disabled={registeringFace}>
+                    {registeringFace ? 'Saving face profile...' : 'Save face profile'}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {currentPage === 'scan' ? (
+          <div className="card-panel p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-lg font-semibold">Live Check-in</p>
@@ -1141,10 +1200,18 @@ export function StudentDashboard() {
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs dark:bg-slate-800">{student?.faceRegistered ? 'Dataset ready' : 'Dataset pending'}</span>
             </div>
           </div>
-          <div className="mt-4 overflow-hidden rounded-[1.5rem] bg-slate-950">
-            <video ref={videoRef} className="h-72 w-full object-cover" playsInline muted />
-          </div>
-          <div className="mt-4 flex flex-wrap gap-3">
+            <div className="mt-4 overflow-hidden rounded-[1.5rem] bg-slate-950">
+              <video ref={videoRef} className="h-72 w-full object-cover" playsInline muted />
+            </div>
+            {!student?.faceRegistered ? (
+              <div className="mt-4 rounded-[1.5rem] border border-amber-500/20 bg-amber-500/10 p-4">
+                <p className="text-sm font-semibold text-amber-500">Face registration required</p>
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                  This account can log in, but attendance scan will stay blocked until you register your face samples from the Profile page.
+                </p>
+              </div>
+            ) : null}
+            <div className="mt-4 flex flex-wrap gap-3">
             <button onClick={startCamera} className="action-primary">
               <Camera size={16} />
               Start camera

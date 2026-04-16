@@ -134,6 +134,48 @@ async function warmFaceApi() {
   }
 }
 
+async function registerFaceProfileWithRetry({ userId, name, email, role, images }) {
+  let response
+  let lastError
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      if (attempt === 1) {
+        await warmFaceApi()
+      }
+      response = await axios.post(
+        `${env.faceApiUrl}/register-face`,
+        {
+          userId,
+          name,
+          email,
+          role,
+          images,
+        },
+        {
+          timeout: 90000,
+        },
+      )
+      break
+    } catch (error) {
+      lastError = error
+      const status = error.response?.status
+      const shouldRetry = !status || status >= 500
+      if (!shouldRetry || attempt === 3) {
+        throw error
+      }
+      await warmFaceApi()
+      await new Promise((resolve) => setTimeout(resolve, attempt * 2500))
+    }
+  }
+
+  if (!response && lastError) {
+    throw lastError
+  }
+
+  return response
+}
+
 async function dispatchEmail({ to, subject, html, text }) {
   if (!to) {
     return { status: 'failed', detail: 'Recipient email is required.' }
@@ -1929,51 +1971,83 @@ app.post('/api/auth/signup', async (req, res) => {
       createdAt: new Date().toISOString(),
     }
 
+    let warningMessage = ''
+
     if (role === 'student' && faceImages.length) {
-      let response
-      let lastError
-
-      for (let attempt = 1; attempt <= 3; attempt += 1) {
-        try {
-          if (attempt === 1) {
-            await warmFaceApi()
-          }
-          response = await axios.post(`${env.faceApiUrl}/register-face`, {
-            userId: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            images: faceImages,
-          }, {
-            timeout: 90000,
-          })
-          break
-        } catch (error) {
-          lastError = error
-          const status = error.response?.status
-          const shouldRetry = !status || status >= 500
-          if (!shouldRetry || attempt === 3) {
-            throw error
-          }
-          await warmFaceApi()
-          await new Promise((resolve) => setTimeout(resolve, attempt * 2500))
+      try {
+        const response = await registerFaceProfileWithRetry({
+          userId: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          images: faceImages,
+        })
+        user.faceRegistered = Boolean(response.data?.success)
+        user.faceSamples = faceImages.map((imageUrl) => ({ imageUrl, capturedAt: new Date().toISOString() }))
+      } catch (error) {
+        const status = error.response?.status
+        if (status && status < 500) {
+          throw error
         }
+        warningMessage = 'Account created, but face registration needs one more try from your student profile.'
       }
-
-      if (!response && lastError) {
-        throw lastError
-      }
-      user.faceRegistered = Boolean(response.data?.success)
-      user.faceSamples = faceImages.map((imageUrl) => ({ imageUrl, capturedAt: new Date().toISOString() }))
     }
 
     db.users.push(user)
     writeDb(db)
     const token = signToken(user)
-    return res.status(201).json({ token, user: sanitizeUser(user) })
+    return res.status(201).json({
+      token,
+      user: sanitizeUser(user),
+      warningMessage,
+      faceRegistrationDeferred: Boolean(warningMessage),
+    })
   } catch (error) {
     const status = error.response?.status || 500
     const message = error.response?.data?.message || 'Signup failed.'
+    return res.status(status).json({
+      message,
+      detail: error.response?.data?.detail || error.message,
+      ownerEmail: error.response?.data?.ownerEmail || '',
+      ownerName: error.response?.data?.ownerName || '',
+      confidence: error.response?.data?.confidence || null,
+    })
+  }
+})
+
+app.post('/api/students/me/register-face', authMiddleware, roleMiddleware('student'), async (req, res) => {
+  try {
+    const { faceImages = [] } = req.body
+    if (!Array.isArray(faceImages) || faceImages.length < 1) {
+      return res.status(400).json({ message: 'At least one face image is required.' })
+    }
+
+    const db = readDb()
+    const student = db.users.find((user) => user.id === req.user.id && user.role === 'student')
+    if (!student) {
+      return res.status(404).json({ message: 'Student account not found.' })
+    }
+
+    const response = await registerFaceProfileWithRetry({
+      userId: student.id,
+      name: student.name,
+      email: student.email,
+      role: student.role,
+      images: faceImages,
+    })
+
+    student.faceRegistered = Boolean(response.data?.success)
+    student.faceSamples = faceImages.map((imageUrl) => ({ imageUrl, capturedAt: new Date().toISOString() }))
+    writeDb(db)
+
+    return res.json({
+      success: true,
+      student: sanitizeUser(student),
+      message: 'Face profile registered successfully.',
+    })
+  } catch (error) {
+    const status = error.response?.status || 500
+    const message = error.response?.data?.message || 'Unable to register face profile.'
     return res.status(status).json({
       message,
       detail: error.response?.data?.detail || error.message,

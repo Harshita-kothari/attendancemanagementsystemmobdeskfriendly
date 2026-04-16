@@ -42,9 +42,13 @@ export function SignupPage() {
     }
 
     try {
-      const user = await signup({ ...form, faceImages })
+      const result = await signup({ ...form, faceImages })
       toast.success('Account created successfully')
-      navigate(user.role === 'teacher' ? '/teacher' : '/student')
+      if (result.warningMessage) {
+        setSubmitError(result.warningMessage)
+        toast.error(result.warningMessage)
+      }
+      navigate(result.user.role === 'teacher' ? '/teacher' : '/student/profile')
     } catch (error) {
       const message = error.response?.data?.message || 'Signup failed'
       const detail = error.response?.data?.detail

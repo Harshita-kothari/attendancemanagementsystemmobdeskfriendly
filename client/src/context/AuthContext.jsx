@@ -72,7 +72,7 @@ export function AuthProvider({ children }) {
       const { data } = await api.post('/api/auth/signup', payload)
       localStorage.setItem('fa_token', data.token)
       setUser(data.user)
-      return data.user
+      return data
     } finally {
       setLoading(false)
     }
