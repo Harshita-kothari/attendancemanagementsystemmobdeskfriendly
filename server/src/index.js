@@ -7,6 +7,7 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import express from 'express'
 import jwt from 'jsonwebtoken'
+import mongoose from 'mongoose'
 import morgan from 'morgan'
 import nodemailer from 'nodemailer'
 
@@ -21,6 +22,7 @@ const DB_FILE = path.join(DATA_DIR, 'mock-db.json')
 
 const env = {
   port: Number(process.env.PORT || 4000),
+  mongoUri: process.env.MONGODB_URI || process.env.MONGO_URI || '',
   jwtSecret: process.env.JWT_SECRET || 'change_me_super_secret',
   clientUrl: process.env.CLIENT_URL || 'http://127.0.0.1:5173',
   faceApiUrl: process.env.FACE_API_URL || 'http://127.0.0.1:5001',
@@ -37,6 +39,19 @@ const env = {
   smtpUser: process.env.SMTP_USER || '',
   smtpPass: process.env.SMTP_PASS || '',
   smtpFromEmail: process.env.SMTP_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || '',
+}
+
+function createDefaultDb() {
+  return {
+    users: [],
+    attendance: [],
+    notifications: [],
+    otpChallenges: [],
+    interventions: [],
+    teacherAttendance: [],
+    academicCalendar: ACADEMIC_EVENTS,
+    systemConfig: DEFAULT_SYSTEM_CONFIG,
+  }
 }
 
 const AUTHORIZED_ZONE = {
@@ -75,11 +90,27 @@ const DAILY_ATTENDANCE_CUTOFF_HOUR = 17
 
 fs.mkdirSync(DATA_DIR, { recursive: true })
 
-function readDb() {
-  if (!fs.existsSync(DB_FILE)) {
-    return { users: [], attendance: [], notifications: [], otpChallenges: [], interventions: [], teacherAttendance: [], academicCalendar: ACADEMIC_EVENTS, systemConfig: DEFAULT_SYSTEM_CONFIG }
-  }
-  const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'))
+const appStateSchema = new mongoose.Schema(
+  {
+    key: { type: String, required: true, unique: true },
+    users: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    attendance: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    notifications: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    otpChallenges: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    interventions: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    teacherAttendance: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    academicCalendar: { type: [mongoose.Schema.Types.Mixed], default: ACADEMIC_EVENTS },
+    systemConfig: { type: mongoose.Schema.Types.Mixed, default: DEFAULT_SYSTEM_CONFIG },
+  },
+  { minimize: false, versionKey: false, timestamps: true },
+)
+
+const AppState = mongoose.models.AppState || mongoose.model('AppState', appStateSchema)
+
+let dbCache = createDefaultDb()
+let persistenceChain = Promise.resolve()
+
+function normalizeDbState(db = {}) {
   return {
     users: db.users || [],
     attendance: db.attendance || [],
@@ -107,8 +138,76 @@ function readDb() {
   }
 }
 
-function writeDb(data) {
+async function loadDbFromMongo() {
+  const state = await AppState.findOne({ key: 'primary' }).lean()
+  return state ? normalizeDbState(state) : null
+}
+
+async function persistDbToMongo(db) {
+  await AppState.findOneAndUpdate(
+    { key: 'primary' },
+    { key: 'primary', ...normalizeDbState(db) },
+    { upsert: true, new: true, setDefaultsOnInsert: true },
+  )
+}
+
+async function initializePersistence() {
+  if (!env.mongoUri) {
+    dbCache = readDbFromFile()
+    return
+  }
+
+  await mongoose.connect(env.mongoUri, {
+    serverSelectionTimeoutMS: 20000,
+  })
+
+  const mongoState = await loadDbFromMongo()
+  if (mongoState) {
+    dbCache = mongoState
+    return
+  }
+
+  const fileState = readDbFromFile()
+  dbCache = fileState
+  await persistDbToMongo(fileState)
+}
+
+function queuePersistence(db) {
+  if (!env.mongoUri) {
+    writeDbToFile(db)
+    return
+  }
+
+  const snapshot = normalizeDbState(db)
+  persistenceChain = persistenceChain
+    .then(() => persistDbToMongo(snapshot))
+    .catch((error) => {
+      console.error('MongoDB persistence failed:', error.message)
+    })
+}
+
+async function flushPersistence() {
+  await persistenceChain
+}
+
+function readDbFromFile() {
+  if (!fs.existsSync(DB_FILE)) {
+    return createDefaultDb()
+  }
+  return normalizeDbState(JSON.parse(fs.readFileSync(DB_FILE, 'utf-8')))
+}
+
+function writeDbToFile(data) {
   fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2))
+}
+
+function readDb() {
+  return dbCache
+}
+
+function writeDb(data) {
+  dbCache = normalizeDbState(data)
+  queuePersistence(dbCache)
 }
 
 function createId(prefix = 'id') {
@@ -3450,6 +3549,34 @@ app.post('/api/face-recognition/recognize', authMiddleware, async (req, res) => 
   return res.json(data)
 })
 
-app.listen(env.port, () => {
-  console.log(`Server listening on http://127.0.0.1:${env.port}`)
+process.on('SIGINT', async () => {
+  await flushPersistence()
+  if (mongoose.connection.readyState) {
+    await mongoose.disconnect()
+  }
+  process.exit(0)
 })
+
+process.on('SIGTERM', async () => {
+  await flushPersistence()
+  if (mongoose.connection.readyState) {
+    await mongoose.disconnect()
+  }
+  process.exit(0)
+})
+
+initializePersistence()
+  .then(() => {
+    app.listen(env.port, () => {
+      console.log(`Server listening on http://127.0.0.1:${env.port}`)
+      if (env.mongoUri) {
+        console.log('MongoDB persistence enabled.')
+      } else {
+        console.log('JSON file persistence enabled.')
+      }
+    })
+  })
+  .catch((error) => {
+    console.error('Failed to initialize persistence:', error.message)
+    process.exit(1)
+  })
