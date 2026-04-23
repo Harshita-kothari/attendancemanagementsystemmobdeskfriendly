@@ -7,10 +7,13 @@ import cv2
 import numpy as np
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from pymongo import MongoClient
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.getenv("FACE_DATA_DIR", str(BASE_DIR / "data"))).resolve()
 ENCODINGS_FILE = DATA_DIR / "face_profiles.json"
+MONGODB_URI = os.getenv("MONGODB_URI", "")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "face-attendance")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 app = Flask(__name__)
@@ -20,8 +23,25 @@ FACE_DETECTOR = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_front
 EYE_DETECTOR = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_eye_tree_eyeglasses.xml")
 SMILE_DETECTOR = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_smile.xml")
 
+mongo_client = MongoClient(MONGODB_URI) if MONGODB_URI else None
+mongo_collection = (
+    mongo_client[MONGO_DB_NAME]["faceprofiles"]
+    if mongo_client is not None
+    else None
+)
+
 
 def read_profiles():
+    if mongo_collection is not None:
+        state = mongo_collection.find_one({"key": "primary"})
+        if state:
+            return state.get("profiles", [])
+        if ENCODINGS_FILE.exists():
+            with open(ENCODINGS_FILE, "r", encoding="utf-8") as handle:
+                profiles = json.load(handle)
+            write_profiles(profiles)
+            return profiles
+        return []
     if not ENCODINGS_FILE.exists():
         return []
     with open(ENCODINGS_FILE, "r", encoding="utf-8") as handle:
@@ -29,6 +49,13 @@ def read_profiles():
 
 
 def write_profiles(profiles):
+    if mongo_collection is not None:
+        mongo_collection.update_one(
+            {"key": "primary"},
+            {"$set": {"key": "primary", "profiles": profiles}},
+            upsert=True,
+        )
+        return
     with open(ENCODINGS_FILE, "w", encoding="utf-8") as handle:
         json.dump(profiles, handle, indent=2)
 

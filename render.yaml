@@ -55,5 +55,9 @@ services:
     startCommand: python app.py
     autoDeploy: true
     envVars:
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGO_DB_NAME
+        value: face-attendance
       - key: FACE_DATA_DIR
         sync: false
