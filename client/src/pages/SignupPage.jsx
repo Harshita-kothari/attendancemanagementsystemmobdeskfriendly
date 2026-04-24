@@ -42,14 +42,26 @@ export function SignupPage() {
       return
     }
 
+    if (faceImages.length > 0 && faceImages.length < 5) {
+      const message = 'Capture at least 5 clear face samples or remove them and finish face setup later from the profile page.'
+      setSubmitError(message)
+      toast.error(message)
+      return
+    }
+
     try {
-      const result = await signup({ ...form, faceImages: [] })
-      toast.success('Account created successfully. Complete face setup from your profile.')
+      const result = await signup({ ...form, faceImages })
+      const faceRegistered = Boolean(result.user?.faceRegistered)
+      toast.success(
+        faceRegistered
+          ? 'Account created successfully with face registration.'
+          : 'Account created successfully. Complete face setup from your profile.',
+      )
       if (result.warningMessage) {
         setSubmitError(result.warningMessage)
         toast.error(result.warningMessage)
       }
-      navigate(result.user.role === 'teacher' ? '/teacher' : '/student/profile')
+      navigate(result.user.role === 'teacher' ? '/teacher' : faceRegistered ? '/student' : '/student/profile')
     } catch (error) {
       const message = error.response?.data?.message || error.friendlyMessage || 'Signup failed'
       const detail = error.response?.data?.detail
@@ -105,7 +117,7 @@ export function SignupPage() {
                   <GraduationCap size={18} />
                   <span className="font-medium">Student Signup</span>
                 </div>
-                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Fast account creation with face setup completed after signup.</p>
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Use face samples now to lock the account, or skip and finish face setup later.</p>
               </button>
               <div className="rounded-[1.5rem] border border-slate-200 bg-white p-4 text-left dark:border-slate-800 dark:bg-slate-950">
                 <p className="font-medium">Teacher accounts are admin-only</p>
@@ -114,9 +126,9 @@ export function SignupPage() {
             </div>
             <div className="mt-6 grid gap-4 sm:grid-cols-3">
               {[
-                [ShieldCheck, 'Fast signup', 'The account is created first, then face setup is completed from the profile page.'],
+                [ShieldCheck, 'Face-safe signup', 'If you capture face samples here, duplicate face accounts are blocked during signup itself.'],
                 [Sparkles, 'Parent alerts', 'Parent contact can receive attendance updates.'],
-                [GraduationCap, 'Student-ready', 'The account opens the student dashboard after signup.'],
+                [GraduationCap, 'Student-ready', 'Students go straight to the dashboard when face setup is already completed.'],
               ].map(([Icon, title, text]) => (
                 <div key={title} className="rounded-[1.25rem] border border-slate-200/80 bg-white/60 p-4 dark:border-slate-800 dark:bg-slate-950/40">
                   <Icon size={18} className="text-blue-500" />
@@ -161,10 +173,10 @@ export function SignupPage() {
             <div className="card-panel p-5">
               <p className="text-sm font-semibold">Why is face setup optional here?</p>
               <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                Mobile signup is faster if the account is created first. You can complete face registration from the profile page right after signup.
+                If you capture 5 or more samples here, signup will try to register the face immediately and block duplicate accounts. You can still skip it and complete face registration from the profile page.
               </p>
               <div className="mt-4 rounded-[1.25rem] border border-slate-200/80 bg-white/60 p-4 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-400">
-                If you want, you can still capture sample images here, but signup no longer waits on face processing before creating the account.
+                If face registration succeeds during signup, you will not be asked to capture it again from the profile page.
               </div>
             </div>
           </div>
