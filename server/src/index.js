@@ -2049,7 +2049,16 @@ app.use(
     credentials: true,
   }),
 )
-app.use(express.json({ limit: '25mb' }))
+app.use(express.json({ limit: '60mb' }))
+app.use(express.urlencoded({ limit: '60mb', extended: true }))
+
+// Body parser error handler: return JSON for invalid JSON payloads
+app.use((err, _req, res, next) => {
+  if (err && err.type === 'entity.parse.failed') {
+    return res.status(400).json({ message: 'Invalid JSON body. Ensure the request is valid JSON and UTF-8 encoded.' })
+  }
+  return next(err)
+})
 app.use(morgan('dev'))
 
 app.get('/health', (_req, res) => {
